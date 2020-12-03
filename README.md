@@ -60,9 +60,9 @@ When you construct the handler, you can pass a second arg which is passed to che
 
 ```js
 const checker = pathname => {
-  if (pathname === '/target1/exists' || pathname === '/target2/sub/foo') {
-    return true;
-  }
+  // You can check any way you like, but checking whether the file exists makes the most sense.
+  const check = path.join('/your/root', pathname);
+  return fs.existsSync(check); // cannot be async
 };
 buildRedirects(parsedYaml.redirects, checker);
 ```
