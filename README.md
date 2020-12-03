@@ -56,7 +56,7 @@ redirects:
 
 (Multiple `to:` targets without a checker is needless, as the first choice will always be chosen.)
 
-When you construct the handler, you can pass a second arg which is passed to check pathnames:
+When you construct the handler, you can pass a second arg which is passed to check potential redirect pathnames:
 
 ```js
 const checker = pathname => {
@@ -67,7 +67,8 @@ const checker = pathname => {
 buildRedirects(parsedYaml.redirects, checker);
 ```
 
-The first matching pathname will be returned.
+In the above example, if you request "/test/foo", your checker will be called with "/target1/foo/" and then "/target2/sub/foo/".
+The first matching pathname (where you return `true`) will be returned.
 
 ⚠️ If any target is a https:// or http:// URL, it will always be returned, without being passed to the checker.
 
