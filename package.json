@@ -1,0 +1,24 @@
+{
+  "devDependencies": {
+    "ava": "^3.13.0",
+    "rollup": "^2.34.1"
+  },
+  "dependencies": {
+    "escape-string-regexp": "^4.0.0"
+  },
+  "type": "module",
+  "name": "redirects-yaml",
+  "version": "1.0.0",
+  "description": "Handler for _redirects.yaml",
+  "main": "index.js",
+  "exports": {
+    "import": "./index.js",
+    "require": "./dist.cjs"
+  },
+  "author": "Sam Thorogood <sam.thorogood@gmail.com>",
+  "license": "Apache-2.0",
+  "scripts": {
+    "test": "ava",
+    "prepublishOnly": "rollup --format=cjs index.js > dist.cjs"
+  }
+}
