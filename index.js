@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-import escapeStringRegexp from 'escape-string-regexp';
-
 const randomPart = (Math.random() * 65536).toString(36);
 const baseUrlOrigin = `https://does-not-exist.${randomPart}.localhost`;
 
@@ -23,137 +21,115 @@ const alwaysAllow = () => true;
 
 /**
  * @typedef {{
- *   from: string|string[],
- *   to: string|string[],
- *   always?: boolean,
+ *   from: string,
+ *   to?: string,
+ *   try?: string|string[],
+ *   else?: string,
  * }}
  */
-var RedirectLine;
+export var RedirectLine;
 
 /**
- * Normalizes the passed path (not a whole URL) to ensure that it ends with a
- * simple trailing slash. Removes "index.html" if found.
+ * Removes "/" or "/index.html" from the pathname.
  *
- * @param {string} path to normalize
- * @return {string}
+ * @param {string} path
+ * @return {string} updated path
  */
-function ensureTrailingSlashOnly(path) {
+function stripSuffix(path) {
+  const suffix = extractSuffix(path);
+  return path.slice(0, -suffix.length);
+}
+
+/**
+ * Finds the suffix from the specified pathname.
+ *
+ * @param {string} path
+ * @return {string} suffix or the empty string
+ */
+function extractSuffix(path) {
   if (path.endsWith('/index.html')) {
-    return path.slice(0, -'index.html'.length);
-  } else if (!path.endsWith('/')) {
-    return `${path}/`;
+    return '/index.html';
+  } else if (path.endsWith('/')) {
+    return '/';
   }
-  return path;
+  return '';
+}
+
+function buildInterpolateIntoResult(target, checker = () => true) {
+  if (target.endsWith('/...')) {
+    const prefix = target.slice(0, -3);
+    return match => {
+      const result = prefix + match;
+      return checker(result) ? result : null;
+    };
+  }
+
+  return () => {
+    return checker(target) ? target : null;
+  };
 }
 
 /**
  * @param {RedirectLine} line
- * @param {function(string): boolean=} checker
+ * @param {function(string): boolean} checker
  * @return {function(string): string|null}
  */
-export function buildSingleHandler({from, to, always}, checker = alwaysAllow) {
-  if (typeof from === 'string') {
-    from = [from];
-  }
-  if (typeof to === 'string') {
-    to = [to];
-  }
-
-  const singleMatchers = new Set();
-  const groupMatchers = new Set();
-  from.forEach(part => {
-    const u = new URL(part, baseUrlOrigin);
-    if (u.origin !== baseUrlOrigin) {
-      return; // got a remote URL in from: list
-    }
-
-    if (part.endsWith('/...')) {
-      part = part.slice(0, -3);
-      groupMatchers.add(part);
-    } else {
-      part = ensureTrailingSlashOnly(part);
-      singleMatchers.add(part);
-    }
-  });
-
-  // This matches a normalized URL against the "to:" list, returning any found
-  // right-most part in the "..." position.
-  /** @type {function(string): string|null} */
+function internalBuildSingleHandler(line, checker) {
   const matcher = (() => {
-    if (!groupMatchers.size) {
-      return url => singleMatchers.has(url) ? '' : null;
+    const fromUrl = new URL(line.from, baseUrlOrigin);
+    if (fromUrl.origin !== baseUrlOrigin) {
+      // This is invalid, we got an external URL in the "from:" list.
+      return () => null;
+    }
+  
+    const {pathname: fromPath} = fromUrl;
+
+    if (fromPath.endsWith('/...')) {
+      // For "/foo/...": match "/foo", "/foo/whatever/zing"
+      const prefix = fromPath.slice(0, -3);
+      const exact = prefix.slice(0, -1);
+      return s => s.startsWith(prefix) || s === exact ? s.slice(exact.length) : null;
     }
 
-    const escaped = [...groupMatchers].map(escapeStringRegexp);
-    const groupMatcher = new RegExp(`^(${escaped.join('|')})`);
+    const single = stripSuffix(fromPath);
+    return s => s === single ? '' : null;
+  })();
 
-    return url => {
-      if (singleMatchers.has(url)) {
-        return '';
-      }
+  const redirectTo = (() => {
+    // Single target always wins.
+    if (line.to) {
+      return buildInterpolateIntoResult(line.to);
+    }
 
-      const m = groupMatcher.exec(url);
-      if (!(m && groupMatchers.has(m[1]))) {
-        return null;
+    let tryValues = line.try;
+    if (typeof tryValues === 'string') {
+      tryValues = [tryValues];
+    } else if (tryValues == null) {
+      tryValues = [];
+    }
+    const cands = tryValues.map(tryValue => buildInterpolateIntoResult(tryValue, checker));
+    if (line.else) {
+      cands.push(buildInterpolateIntoResult(line.else));
+    }
+
+    return match => {
+      for (const cand of cands) {
+        const result = cand(match);
+        if (result !== null) {
+          return result;
+        }
       }
-      const base = m[1];
-      return url.slice(base.length - 1); // include leading "/"
+      return null;
     };
   })();
 
-  return pathname => {
-    const build = new URL(pathname, baseUrlOrigin);
-    if (build.origin !== baseUrlOrigin) {
-      return false; // can't match non-local URLs
-    }
-
-    const normalized = ensureTrailingSlashOnly(build.pathname);
-
+  // nb. assumes normalized in internal method
+  return normalized => {
     const matchPart = matcher(normalized);
     if (matchPart === null) {
       return null; // did not match this rule
     }
-
-    for (let i = 0; i < to.length; ++i) {
-      const part = to[i];
-      const isLast = (i + 1 === to.length);
-
-      const u = new URL(part, baseUrlOrigin);
-      let {pathname: check} = u;
-
-      if (check.endsWith('/...')) {
-        check = check.slice(0, -4) + (matchPart || '/');
-      } else {
-        check = ensureTrailingSlashOnly(check);
-      }
-
-      // Allow if this should (a) always pass, (b) on a different origin, or (c) checker passes.
-      const allowed = ((always && isLast) || u.origin !== baseUrlOrigin || checker(check));
-      if (!allowed) {
-        continue;
-      }
-
-      // Match the final target to the source request. If it ended with "/index.html" or did
-      // not have a trailing "/", match that.
-      if (pathname.endsWith('/index.html')) {
-        check += 'index.html';
-      } else if (!pathname.endsWith('/')) {
-        check = check.slice(0, -1);
-      }
-
-      u.pathname = check;
-
-      u.search = build.search;
-      u.hash = build.hash;
-
-      const out = u.toString();
-      if (u.origin !== baseUrlOrigin) {
-        return out;
-      }
-      return out.substr(baseUrlOrigin.length); // remove "https://foo.blah"
-    }
-
-    return null;
+    return redirectTo(matchPart);
   };
 }
 
@@ -163,15 +139,36 @@ export function buildSingleHandler({from, to, always}, checker = alwaysAllow) {
  * @return {function(string): string|null}
  */
 export function buildHandlers(all, checker = alwaysAllow) {
-  const handlers = all.map(line => buildSingleHandler(line, checker));
+  const handlers = all.map(line => internalBuildSingleHandler(line, checker));
 
   return pathname => {
+    const u = new URL(pathname, baseUrlOrigin);
+    if (u.origin !== baseUrlOrigin) {
+      return null;  // passed non-local URL
+    }
+
+    // We check the pathname without a suffix, but store it for later so we can add it back.
+    const suffix = extractSuffix(u.pathname);
+    pathname = stripSuffix(u.pathname);
+
+    let result = null;
     for (const handler of handlers) {
-      const out = handler(pathname);
-      if (out !== null) {
-        return out;
+      result = handler(pathname);
+      if (result !== null) {
+        break;
       }
     }
-    return null;
+    if (result === null) {
+      return null;
+    }
+
+    const resultUrl = new URL(result, u);
+    resultUrl.pathname += suffix;
+
+    const s = resultUrl.toString();
+    if (resultUrl.origin !== baseUrlOrigin) {
+      return s;  // don't include internal origin
+    }
+    return s.slice(baseUrlOrigin.length);
   };
 }
