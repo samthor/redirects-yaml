@@ -29,41 +29,53 @@ test('basic handler', t => {
   t.deepEqual(handler('/bar/hello'), null);
 });
 
-// test('external handler always wins', t => {
-//   const checker = () => false;
-//   const handler = buildSingleHandler({
-//     from: ['/foo/...'],
-//     to: ['/zing/...', 'https://example.com/...', '/other/...'],
-//     always: true,
-//   }, checker);
+test('multiple try handlers', t => {
+  const checker = (raw, original) => {
+    if (raw === 'https://example.com/supported') {
+      throw new Error('url should never be passed');
+    }
+    if (raw === '/other/other-req') {
+      t.is(original, '/foo/other-req');
+      return true;
+    }
+    return false;
+  };
+  const handler = buildSingleHandler({
+    from: '/foo/...',
+    try: ['/zing/...', 'https://example.com/...', '/other/...'],
+  }, checker);
 
-//   t.deepEqual(handler('/foo/hello'), 'https://example.com/hello');
-// });
+  t.deepEqual(handler('/foo/hello'), null);
+  t.deepEqual(handler('/foo/supported'), null);
+  t.deepEqual(handler('/foo/other-req'), '/other/other-req');
+});
 
-// test('multiple fall-through', t => {
-//   const checker = (pathname) => {
-//     if (pathname === '/bar/does-not-exist/') {
-//       return false;
-//     } else if (pathname === '/bar/test/') {
-//       return true;
-//     }
-//     throw new Error(`unexpected: ${pathname}`);
-//   };
+test('multiple fall-through', t => {
+  const checker = (pathname) => {
+    if (pathname === '/bar/does-not-exist') {
+      return false;
+    } else if (pathname === '/bar/test') {
+      return true;
+    }
+    throw new Error(`unexpected: ${pathname}`);
+  };
 
-//   const handler = buildHandlers([
-//     {
-//       from: '/foo',
-//       to: '/bar/does-not-exist',
-//     },
-//     {
-//       from: '/foo/...',
-//       to: '/bar/test',
-//     },
-//   ], checker);
+  const handler = buildHandlers([
+    {
+      from: '/foo2/...',
+      'try': '/bar/does-not-exist',
+      else: '/no',
+    },
+    {
+      from: '/foo/...',
+      'try': '/bar/test',
+      'else': '/oh-no',
+    },
+  ], checker);
 
-//   t.deepEqual(handler('/foo'), '/bar/test');
-//   t.deepEqual(handler('/foo/whatever/ignored'), '/bar/test');
-// });
+  t.deepEqual(handler('/foo'), '/bar/test');
+  t.deepEqual(handler('/foo2/whatever/ignored'), '/no');
+});
 
 test('persists stuff', t => {
   const handler = buildSingleHandler({
@@ -71,5 +83,6 @@ test('persists stuff', t => {
     to: '/bar/...',
   });
 
-  t.deepEqual(handler('/foo?arg'), '/bar?arg')
+  t.deepEqual(handler('/foo?arg='), '/bar?arg=')
+  t.deepEqual(handler('/foo/index.html?zing#hello'), '/bar/index.html?zing#hello')
 });

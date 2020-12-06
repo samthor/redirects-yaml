@@ -26,68 +26,47 @@ const invalidOut = handler('/not_handled') // null
 
 You can also use `require()`.
 
-# Additional Support
+# Try/Else Support
 
 This package also supports some extended config.
+You can _try_ possible redirect handlers with an optional default fallback:
 
-## Multiple From
-
-You can match multiple source addresses at once:
-
-```yaml
+```html
 redirects:
-- from:
-  - /page
-  - /another_page
-  to: /target
+- from: /page/...
+  try:
+  - /foo/...
+  else: /bar/...
 ```
 
-## Multiple To &amp; Checker
+In this case, you'll match URLs under "/page".
+This will then check to see whether the same URL under "/foo" exists.
 
-You can specify multiple `to:` targets and pass a custom checker:
+* If it does, a URL under "/foo" will be returned.
 
-```yaml
-redirects:
-- from: /test/...
-  to:
-  - /target1/...
-  - /target2/sub/...
-```
+* If it does not match, then we'll always redirect to the page under "/bar".
 
-(Multiple `to:` targets without a checker is needless, as the first choice will always be chosen.)
+* ⚠️ External URLs will never pass `try:` checks and won't be passed to your checker.
 
-When you construct the handler, you can pass a second arg which is passed to check potential redirect pathnames:
+You have to specify a `checker` function for `try:` to work:
 
 ```js
-const checker = pathname => {
+const checker = (pathname, original) => {
   // You can check any way you like, but checking whether the file exists makes the most sense.
+  // pathname can be blank (exact match), or it will start with "/" and have a longer path.
+  // You MUST ALWAYS use `path.join` to combine it with a real root.
   const check = path.join('/your/root', pathname);
   return fs.existsSync(check); // cannot be async
+
+  // If you're on Windows, be sure to control for URL-style slashes "/" with your filesystem
+  // which will have "\" slashes.
 };
-buildRedirects(parsedYaml.redirects, checker);
+const handler = buildRedirects(parsedYaml.redirects, checker);
 ```
 
-In the above example, if you request "/test/foo", your checker will be called with "/target1/foo/" and then "/target2/sub/foo/".
-The first matching pathname (where you return `true`) will be returned.
-
-⚠️ If any target is a https:// or http:// URL, it will always be returned, without being passed to the checker.
-
-### Always Flag
-
-As well as the specifying a checker method, you can specify `always: true` to have the last `to:` always be returned.
-For example:
-
-```yaml
-redirects:
-- from: /test/...
-  to:
-  - /target1/...
-  - /fallback/...
-  always: true
-```
-
-In this case, requests to /test/foo will go load /target1/foo (if the checker passes), but otherwise will always go to /fallback/foo.
+Note that the `else:` default fallback is optional.
+If none of your `try:` candidates pass your checker, this will continue stepping through other redirect options.
 
 # Dependencies
 
-This depends on `escape-string-regexp` to construct complex `from:` matchers.
+This has no dependencies. 🍩

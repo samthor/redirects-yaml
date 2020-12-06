@@ -37,7 +37,10 @@ export var RedirectLine;
  */
 function stripSuffix(path) {
   const suffix = extractSuffix(path);
-  return path.slice(0, -suffix.length);
+  if (suffix.length) {
+    return path.slice(0, -suffix.length);
+  }
+  return path;
 }
 
 /**
@@ -55,24 +58,29 @@ function extractSuffix(path) {
   return '';
 }
 
+/**
+ * @param {string} target
+ * @param {function(string, string): boolean} checker
+ * @return {function(string, string): string|null}
+ */
 function buildInterpolateIntoResult(target, checker = () => true) {
   if (target.endsWith('/...')) {
-    const prefix = target.slice(0, -3);
-    return match => {
+    const prefix = target.slice(0, -4);
+    return (match, original) => {
       const result = prefix + match;
-      return checker(result) ? result : null;
+      return checker(result, original) ? result : null;
     };
   }
 
-  return () => {
-    return checker(target) ? target : null;
+  return (match, original) => {
+    return checker(target, original) ? target : null;
   };
 }
 
 /**
  * @param {RedirectLine} line
- * @param {function(string): boolean} checker
- * @return {function(string): string|null}
+ * @param {function(string, string): boolean} checker
+ * @return {function(string, string): string|null}
  */
 function internalBuildSingleHandler(line, checker) {
   const matcher = (() => {
@@ -88,14 +96,14 @@ function internalBuildSingleHandler(line, checker) {
       // For "/foo/...": match "/foo", "/foo/whatever/zing"
       const prefix = fromPath.slice(0, -3);
       const exact = prefix.slice(0, -1);
-      return s => s.startsWith(prefix) || s === exact ? s.slice(exact.length) : null;
+      return s => (s.startsWith(prefix) || s === exact) ? s.slice(exact.length) : null;
     }
 
     const single = stripSuffix(fromPath);
     return s => s === single ? '' : null;
   })();
 
-  const redirectTo = (() => {
+const redirectTo = (() => {
     // Single target always wins.
     if (line.to) {
       return buildInterpolateIntoResult(line.to);
@@ -112,9 +120,9 @@ function internalBuildSingleHandler(line, checker) {
       cands.push(buildInterpolateIntoResult(line.else));
     }
 
-    return match => {
+    return (match, original) => {
       for (const cand of cands) {
-        const result = cand(match);
+        const result = cand(match, original);
         if (result !== null) {
           return result;
         }
@@ -124,21 +132,30 @@ function internalBuildSingleHandler(line, checker) {
   })();
 
   // nb. assumes normalized in internal method
-  return normalized => {
+  return (normalized, original) => {
     const matchPart = matcher(normalized);
     if (matchPart === null) {
       return null; // did not match this rule
     }
-    return redirectTo(matchPart);
+    return redirectTo(matchPart, original);
   };
 }
 
 /**
  * @param {RedirectLine[]} all
- * @param {function(string): boolean=} checker
+ * @param {function(string, string): boolean=} checker
  * @return {function(string): string|null}
  */
 export function buildHandlers(all, checker = alwaysAllow) {
+  const actualChecker = checker;
+  checker = (pathname, original) => {
+    const u = new URL(pathname, baseUrlOrigin);
+    if (u.origin !== baseUrlOrigin) {
+      return false;  // never match external URLs
+    }
+    return actualChecker(pathname, original) || false;
+  };
+
   const handlers = all.map(line => internalBuildSingleHandler(line, checker));
 
   return pathname => {
@@ -153,7 +170,7 @@ export function buildHandlers(all, checker = alwaysAllow) {
 
     let result = null;
     for (const handler of handlers) {
-      result = handler(pathname);
+      result = handler(pathname, u.pathname);
       if (result !== null) {
         break;
       }
@@ -164,6 +181,8 @@ export function buildHandlers(all, checker = alwaysAllow) {
 
     const resultUrl = new URL(result, u);
     resultUrl.pathname += suffix;
+    resultUrl.hash = u.hash;
+    resultUrl.search = u.search;
 
     const s = resultUrl.toString();
     if (resultUrl.origin !== baseUrlOrigin) {

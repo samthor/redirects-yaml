@@ -3,12 +3,10 @@
     "ava": "^3.13.0",
     "rollup": "^2.34.1"
   },
-  "dependencies": {
-    "escape-string-regexp": "^4.0.0"
-  },
+  "dependencies": {},
   "type": "module",
   "name": "redirects-yaml",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Handler for _redirects.yaml",
   "main": "index.js",
   "exports": {
