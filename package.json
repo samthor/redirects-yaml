@@ -6,13 +6,14 @@
   "dependencies": {},
   "type": "module",
   "name": "redirects-yaml",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Handler for _redirects.yaml",
   "main": "index.js",
   "exports": {
     "import": "./index.js",
     "require": "./dist.cjs"
   },
+  "types": "./types.d.ts",
   "author": "Sam Thorogood <sam.thorogood@gmail.com>",
   "license": "Apache-2.0",
   "scripts": {

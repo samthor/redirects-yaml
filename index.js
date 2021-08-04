@@ -19,15 +19,8 @@ const baseUrlOrigin = `https://does-not-exist.${randomPart}.localhost`;
 
 const alwaysAllow = () => true;
 
-/**
- * @typedef {{
- *   from: string,
- *   to?: string,
- *   try?: string|string[],
- *   else?: string,
- * }}
- */
-export var RedirectLine;
+import * as types from './types.js';
+
 
 /**
  * Removes "/" or "/index.html" from the pathname.
@@ -60,8 +53,8 @@ function extractSuffix(path) {
 
 /**
  * @param {string} target
- * @param {function(string, string): boolean} checker
- * @return {function(string, string): string|null}
+ * @param {(pathname: string, original: string) => boolean} checker
+ * @return {(match: string, original: string) => string?}
  */
 function buildInterpolateIntoResult(target, checker = () => true) {
   if (target.endsWith('/...')) {
@@ -78,7 +71,7 @@ function buildInterpolateIntoResult(target, checker = () => true) {
 }
 
 /**
- * @param {RedirectLine} line
+ * @param {types.RedirectLine} line
  * @param {function(string, string): boolean} checker
  * @return {function(string, string): string|null}
  */
@@ -103,7 +96,7 @@ function internalBuildSingleHandler(line, checker) {
     return s => s === single ? '' : null;
   })();
 
-const redirectTo = (() => {
+  const redirectTo = (() => {
     // Single target always wins.
     if (line.to) {
       return buildInterpolateIntoResult(line.to);
@@ -142,9 +135,7 @@ const redirectTo = (() => {
 }
 
 /**
- * @param {RedirectLine[]} all
- * @param {function(string, string): boolean=} checker
- * @return {function(string): string|null}
+ * @type {types.buildHandlers}
  */
 export function buildHandlers(all, checker = alwaysAllow) {
   const actualChecker = checker;
