@@ -171,7 +171,12 @@ export function buildHandlers(all, checker = alwaysAllow) {
     }
 
     const resultUrl = new URL(result, u);
-    resultUrl.pathname += suffix;
+    if (resultUrl.pathname.endsWith('/') && suffix.startsWith('/')) {
+      // Don't end up with something like "https://foo//bar".
+      resultUrl.pathname += suffix.substr(1);
+    } else {
+      resultUrl.pathname += suffix;
+    }
     resultUrl.hash = u.hash;
     resultUrl.search = u.search;
 

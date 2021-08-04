@@ -15,6 +15,9 @@
  */
 
 
+/**
+ * Describes something that can be redirected. Supports `/...` suffixes to catch-all. 
+ */
 export interface RedirectLine {
   from: string,
   to?: string,
@@ -23,6 +26,10 @@ export interface RedirectLine {
 }
 
 
+/**
+ * Builds a handler that supports the possible redirections passed. You can pass an optional
+ * checker function which can check that the resulting pathname is valid (otherwise falls open).
+ */
 export function buildHandlers(
   all: RedirectLine[],
   checker?: (pathname: string, original: string) => boolean,
