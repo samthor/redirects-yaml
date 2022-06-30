@@ -82,7 +82,7 @@ function internalBuildSingleHandler(line, checker) {
       // This is invalid, we got an external URL in the "from:" list.
       return () => null;
     }
-  
+
     const {pathname: fromPath} = fromUrl;
 
     if (fromPath.endsWith('/...')) {
@@ -177,7 +177,9 @@ export function buildHandlers(all, checker = alwaysAllow) {
     } else {
       resultUrl.pathname += suffix;
     }
-    resultUrl.hash = u.hash;
+    if (!resultUrl.hash) {
+      resultUrl.hash = u.hash;
+    }
     resultUrl.search = u.search;
 
     const s = resultUrl.toString();
