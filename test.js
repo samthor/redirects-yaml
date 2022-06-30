@@ -86,3 +86,14 @@ test('persists stuff', t => {
   t.deepEqual(handler('/foo?arg='), '/bar?arg=')
   t.deepEqual(handler('/foo/index.html?zing#hello'), '/bar/index.html?zing#hello')
 });
+
+test('handles redirect hashes', t => {
+  const handler = buildSingleHandler({
+    from: '/foo',
+    to: '/bar/#baz',
+  });
+
+  t.deepEqual(handler('/foo'), '/bar/#baz')
+  t.deepEqual(handler('/foo?arg='), '/bar/?arg=#baz')
+  t.deepEqual(handler('/foo/index.html?zing#hello'), '/bar/index.html?zing#baz')
+});
